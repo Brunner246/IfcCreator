@@ -6,7 +6,12 @@ from pathlib import Path
 
 import ifcopenshell
 import ifcopenshell.api
+import ifcopenshell.api.root
+import ifcopenshell.api.unit
+import ifcopenshell.api.context
+import ifcopenshell.api.project
 import ifcopenshell.guid
+from ifcopenshell.ifcopenshell_wrapper import IfcSpfHeader
 
 from models.ifc_schemas import IfcBeamCreateRequest
 from services.strategies.ifc2x3_strategy import IFC2X3Strategy
@@ -19,7 +24,7 @@ from services.strategies.model_strategy import IfcModelStrategy
 class IfcModelManager:
     def __init__(self, schema_strategy: IfcModelStrategy = None):
         self.strategy = schema_strategy or IFC4Strategy()
-        self.ifc = None
+        self.model = None
         self.project = None
         self.site = None
         self.building = None
@@ -27,24 +32,29 @@ class IfcModelManager:
         self.context = None
         self.owner_history = None
 
+        # model = ifcopenshell.api.project.create_file()
+
     def create_file(self) -> 'IfcModelManager':
-        self.ifc = ifcopenshell.file(schema=self.strategy.get_schema())
+        self.model = ifcopenshell.file(schema=self.strategy.get_schema())
+        # header: IfcSpfHeader = None
+        # header.file_schema
+        print(self.model.wrapped_data.header)
         return self
 
     def initialize_model(self, project_name: str = "Demo Project",
                          description: str = "IFC Reference View") -> 'IfcModelManager':
-        origin = self.ifc.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
-        axis = self.ifc.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
-        ref_direction = self.ifc.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
-        world_coordinate_system = self.ifc.create_entity(
+        origin = self.model.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
+        axis = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        ref_direction = self.model.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
+        world_coordinate_system = self.model.create_entity(
             "IfcAxis2Placement3D",
             Location=origin,
             Axis=axis,
             RefDirection=ref_direction
         )
 
-        true_north = self.ifc.create_entity("IfcDirection", DirectionRatios=(0.0, 1.0))
-        self.context = self.ifc.create_entity(
+        true_north = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 1.0))
+        self.context = self.model.create_entity(
             "IfcGeometricRepresentationContext",
             ContextIdentifier="Body",
             ContextType="Model",
@@ -56,7 +66,7 @@ class IfcModelManager:
 
         self.owner_history = self._create_owner_history()
 
-        self.project = self.ifc.create_entity(
+        self.project = self.model.create_entity(
             "IfcProject",
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=self.owner_history,
@@ -81,25 +91,25 @@ class IfcModelManager:
     def add_beam(self, data: IfcBeamCreateRequest) -> ifcopenshell.entity_instance:
         """Add a beam to the model"""
         # Create placement and direction entities
-        origin = self.ifc.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
-        axis = self.ifc.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
-        ref_direction = self.ifc.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
-        axis2placement3d = self.ifc.create_entity(
+        origin = self.model.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
+        axis = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        ref_direction = self.model.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
+        axis2placement3d = self.model.create_entity(
             "IfcAxis2Placement3D",
             Location=origin,
             Axis=axis,
             RefDirection=ref_direction
         )
 
-        ref_dir_2d = self.ifc.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0))
-        axis2placement2d = self.ifc.create_entity(
+        ref_dir_2d = self.model.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0))
+        axis2placement2d = self.model.create_entity(
             "IfcAxis2Placement2D",
             Location=origin,
             RefDirection=ref_dir_2d
         )
 
         # Create profile and solid
-        profile = self.ifc.create_entity(
+        profile = self.model.create_entity(
             "IfcRectangleProfileDef",
             ProfileType="AREA",
             XDim=data.width,
@@ -107,8 +117,8 @@ class IfcModelManager:
             Position=axis2placement2d
         )
 
-        direction_z = self.ifc.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
-        extruded = self.ifc.create_entity(
+        direction_z = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        extruded = self.model.create_entity(
             "IfcExtrudedAreaSolid",
             SweptArea=profile,
             Depth=data.length,
@@ -116,7 +126,7 @@ class IfcModelManager:
             Position=axis2placement3d
         )
 
-        body_rep = self.ifc.create_entity(
+        body_rep = self.model.create_entity(
             "IfcShapeRepresentation",
             ContextOfItems=self.context,
             RepresentationIdentifier="Body",
@@ -124,14 +134,14 @@ class IfcModelManager:
             Items=[extruded]
         )
 
-        shape = self.ifc.create_entity("IfcProductDefinitionShape", Representations=[body_rep])
+        shape = self.model.create_entity("IfcProductDefinitionShape", Representations=[body_rep])
 
-        beam: ifcopenshell.entity_instance = self.ifc.create_entity(
+        beam: ifcopenshell.entity_instance = self.model.create_entity(
             "IfcBeam",
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=self.owner_history,
             Name=data.name,
-            ObjectPlacement=self.ifc.create_entity(
+            ObjectPlacement=self.model.create_entity(
                 "IfcLocalPlacement",
                 PlacementRelTo=self.storey.ObjectPlacement,
                 RelativePlacement=axis2placement3d
@@ -139,7 +149,7 @@ class IfcModelManager:
             Representation=shape
         )
 
-        self.ifc.create_entity(
+        self.model.create_entity(
             "IfcRelContainedInSpatialStructure",
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=self.owner_history,
@@ -153,35 +163,35 @@ class IfcModelManager:
         if file_path is None:
             file_path = self._generate_file_path()
 
-        self.ifc.write(file_path)
+        self.model.write(file_path)
         return file_path
 
     def _create_owner_history(self) -> ifcopenshell.entity_instance:
 
         creation_date_time = int(time.time())
-        person = self.ifc.create_entity(
+        person = self.model.create_entity(
             "IfcPerson",
             FamilyName="Brunner",
             GivenName="Michael"
         )
-        organization = self.ifc.create_entity(
+        organization = self.model.create_entity(
             "IfcOrganization",
             Name="Brunner246",
             Description="Brunner246"
         )
-        person_and_organization = self.ifc.create_entity(
+        person_and_organization = self.model.create_entity(
             "IfcPersonAndOrganization",
             ThePerson=person,
             TheOrganization=organization
         )
-        application = self.ifc.create_entity(
+        application = self.model.create_entity(
             "IfcApplication",
             ApplicationDeveloper=organization,
             Version="0.1.0",
             ApplicationFullName="IfcCreator",
             ApplicationIdentifier="ABC123"
         )
-        return self.ifc.create_entity(
+        return self.model.create_entity(
             "IfcOwnerHistory",
             OwningUser=person_and_organization,
             OwningApplication=application,
@@ -190,12 +200,12 @@ class IfcModelManager:
 
     def _create_site(self, world_coordinate_system) -> ifcopenshell.entity_instance:
         """Create site entity"""
-        site_placement = self.ifc.create_entity(
+        site_placement = self.model.create_entity(
             "IfcLocalPlacement",
             PlacementRelTo=None,
             RelativePlacement=world_coordinate_system
         )
-        return self.ifc.create_entity(
+        return self.model.create_entity(
             "IfcSite",
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=self.owner_history,
@@ -204,15 +214,15 @@ class IfcModelManager:
         )
 
     def _create_building(self) -> ifcopenshell.entity_instance:
-        building_placement = self.ifc.create_entity(
+        building_placement = self.model.create_entity(
             "IfcLocalPlacement",
             PlacementRelTo=self.site.ObjectPlacement,
-            RelativePlacement=self.ifc.create_entity(
+            RelativePlacement=self.model.create_entity(
                 "IfcAxis2Placement3D",
-                Location=self.ifc.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
+                Location=self.model.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
             )
         )
-        return self.ifc.create_entity(
+        return self.model.create_entity(
             "IfcBuilding",
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=self.owner_history,
@@ -221,15 +231,15 @@ class IfcModelManager:
         )
 
     def _create_storey(self) -> ifcopenshell.entity_instance:
-        storey_placement = self.ifc.create_entity(
+        storey_placement = self.model.create_entity(
             "IfcLocalPlacement",
             PlacementRelTo=self.building.ObjectPlacement,
-            RelativePlacement=self.ifc.create_entity(
+            RelativePlacement=self.model.create_entity(
                 "IfcAxis2Placement3D",
-                Location=self.ifc.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
+                Location=self.model.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
             )
         )
-        return self.ifc.create_entity(
+        return self.model.create_entity(
             "IfcBuildingStorey",
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=self.owner_history,
@@ -238,7 +248,7 @@ class IfcModelManager:
         )
 
     def _create_aggregation(self, relating_object, related_objects) -> ifcopenshell.entity_instance:
-        return self.ifc.create_entity(
+        return self.model.create_entity(
             "IfcRelAggregates",
             GlobalId=ifcopenshell.guid.new(),
             OwnerHistory=self.owner_history,

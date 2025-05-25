@@ -3,6 +3,7 @@
 import time
 import uuid
 from pathlib import Path
+from typing import Dict, Any
 
 import ifcopenshell
 import ifcopenshell.api
@@ -14,6 +15,7 @@ import ifcopenshell.guid
 from ifcopenshell.ifcopenshell_wrapper import IfcSpfHeader
 
 from models.ifc_schemas import IfcBeamCreateRequest
+from services.strategies.building_element_creator import IfcBuildingElementCreator
 from services.strategies.ifc2x3_strategy import IFC2X3Strategy
 from services.strategies.ifc4_strategy import IFC4Strategy
 from services.strategies.ifc4x3_strategy import IFC4X3Strategy
@@ -87,6 +89,18 @@ class IfcModelManager:
         self.strategy.create_specific_entities(self)
 
         return self
+
+    def add_building_element(self, creator: IfcBuildingElementCreator) -> ifcopenshell.entity_instance:
+        """Add a building element to the model using the provided creator"""
+        if not self.model or not self.storey:
+            raise ValueError("Model must be initialized before adding elements")
+
+        return creator.create_element(
+            self.model,
+            self.context,
+            self.owner_history,
+            self.storey
+        )
 
     def add_beam(self, data: IfcBeamCreateRequest) -> ifcopenshell.entity_instance:
         """Add a beam to the model"""

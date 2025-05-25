@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "ifccreator"
+version = "0.1.0"
+description = ""
+authors = ["Michael Brunner <brunner@cadwork.swiss>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+ifcopenshell = "0.8.2"
+pytest = "==8.3.5"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

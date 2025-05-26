@@ -11,13 +11,14 @@ def setup_beam_request():
         height=0.400
     )
 
+
 def test_test():
     assert True
 
 
 def test_ifc_creation(setup_beam_request):
     # from services.ifc_creator import create_ifc_file
-    from services.ifc_model_manager import create_ifc_file
+    from services.ifc_model_manager_factory import create_ifc_file
 
     model = create_ifc_file(setup_beam_request)
     assert model is not None

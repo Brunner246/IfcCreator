@@ -3,23 +3,21 @@
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, Any
 
 import ifcopenshell
 import ifcopenshell.api
-import ifcopenshell.api.root
-import ifcopenshell.api.unit
 import ifcopenshell.api.context
 import ifcopenshell.api.project
+import ifcopenshell.api.root
+import ifcopenshell.api.unit
 import ifcopenshell.guid
-from ifcopenshell.ifcopenshell_wrapper import IfcSpfHeader
 
+from core.cartesian_point import CartesianPoint
 from models.ifc_schemas import IfcBeamCreateRequest
 from services.strategies.building_element_creator import IfcBuildingElementCreator
-from services.strategies.ifc2x3_strategy import IFC2X3Strategy
 from services.strategies.ifc4_strategy import IFC4Strategy
-from services.strategies.ifc4x3_strategy import IFC4X3Strategy
 from services.strategies.model_strategy import IfcModelStrategy
+
 
 # https://docs.ifcopenshell.org/ifcopenshell-python/code_examples.html
 
@@ -45,15 +43,10 @@ class IfcModelManager:
 
     def initialize_model(self, project_name: str = "Demo Project",
                          description: str = "IFC Reference View") -> 'IfcModelManager':
-        origin = self.model.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
-        axis = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
-        ref_direction = self.model.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
-        world_coordinate_system = self.model.create_entity(
-            "IfcAxis2Placement3D",
-            Location=origin,
-            Axis=axis,
-            RefDirection=ref_direction
-        )
+        origin = self._create_cartesian_point(CartesianPoint(0.0, 0.0, 0.0))
+        axis = self._create_direction(CartesianPoint(0.0, 0.0, 1.0))  # Z-axis
+        ref_direction = self._create_direction(CartesianPoint(1.0, 0.0, 0.0))
+        world_coordinate_system = self._create_axis_2placement_3d(origin, axis, ref_direction)
 
         true_north = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 1.0))
         self.context = self.model.create_entity(
@@ -77,7 +70,6 @@ class IfcModelManager:
             RepresentationContexts=[self.context]
         )
 
-
         self.site = self._create_site(world_coordinate_system)
         self.building = self._create_building()
         self.storey = self._create_storey()
@@ -89,6 +81,10 @@ class IfcModelManager:
         self.strategy.create_specific_entities(self)
 
         return self
+
+    def _create_cartesian_point(self, point: CartesianPoint):
+        origin = self.model.create_entity("IfcCartesianPoint", Coordinates=(point.x, point.y, point.z))
+        return origin
 
     def add_building_element(self, creator: IfcBuildingElementCreator) -> ifcopenshell.entity_instance:
         """Add a building element to the model using the provided creator"""
@@ -104,16 +100,10 @@ class IfcModelManager:
 
     def add_beam(self, data: IfcBeamCreateRequest) -> ifcopenshell.entity_instance:
         """Add a beam to the model"""
-        # Create placement and direction entities
-        origin = self.model.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
-        axis = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
-        ref_direction = self.model.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
-        axis2placement3d = self.model.create_entity(
-            "IfcAxis2Placement3D",
-            Location=origin,
-            Axis=axis,
-            RefDirection=ref_direction
-        )
+        origin = self._create_cartesian_point(CartesianPoint(0.0, 0.0, 0.0))
+        axis = self._create_direction(CartesianPoint(0.0, 0.0, 1.0))
+        ref_direction = self._create_direction(CartesianPoint(1.0, 0.0, 0.0))
+        axis2placement3d = self._create_axis_2placement_3d(origin, axis, ref_direction)
 
         ref_dir_2d = self.model.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0))
         axis2placement2d = self.model.create_entity(
@@ -131,7 +121,7 @@ class IfcModelManager:
             Position=axis2placement2d
         )
 
-        direction_z = self.model.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+        direction_z = self._create_direction(CartesianPoint(0.0, 0.0, 1.0))
         extruded = self.model.create_entity(
             "IfcExtrudedAreaSolid",
             SweptArea=profile,
@@ -172,6 +162,20 @@ class IfcModelManager:
         )
 
         return beam
+
+    def _create_axis_2placement_3d(self, origin: ifcopenshell.entity_instance, axis: ifcopenshell.entity_instance,
+                                   ref_direction: ifcopenshell.entity_instance) -> ifcopenshell.entity_instance:
+        axis2placement3d = self.model.create_entity(
+            "IfcAxis2Placement3D",
+            Location=origin,
+            Axis=axis,
+            RefDirection=ref_direction
+        )
+        return axis2placement3d
+
+    def _create_direction(self, point: CartesianPoint):
+        axis = self.model.create_entity("IfcDirection", DirectionRatios=(point.x, point.y, point.z))
+        return axis
 
     def save(self, file_path: str = None) -> str:
         if file_path is None:
@@ -276,53 +280,3 @@ class IfcModelManager:
         output_dir = Path("generated")
         output_dir.mkdir(exist_ok=True)
         return str(output_dir / f"{uuid.uuid4()}.ifc")
-
-
-class IfcModelDirector:
-
-    def __init__(self, model_manager: IfcModelManager):
-        self.model_manager = model_manager # or IfcModelManager()
-
-    def set_strategy(self, strategy: IfcModelStrategy) -> 'IfcModelDirector':
-        self.model_manager = IfcModelManager(strategy)
-        return self
-
-    def construct_basic_model(self, project_name: str = "Demo Project",
-                              description: str = "Reference View") -> 'IfcModelDirector':
-
-        self.model_manager.create_file().initialize_model(
-            project_name=project_name,
-            description=description
-        )
-        return self
-
-    def get_result(self) -> IfcModelManager:
-        return self.model_manager
-
-
-class IfcModelManagerFactory:
-    @staticmethod
-    def create_manager(schema_version: str = "IFC4") -> IfcModelManager:
-        strategy_map = {
-            "IFC4": IFC4Strategy(),
-            "IFC2X3": IFC2X3Strategy(),
-            "IFC4X3": IFC4X3Strategy()
-        }
-
-        strategy = strategy_map.get(schema_version.upper())
-        if not strategy:
-            raise ValueError(f"Unsupported schema version: {schema_version}")
-
-        return IfcModelManager(strategy)
-
-
-def create_ifc_file(data: IfcBeamCreateRequest, schema: str = "IFC4") -> str:
-    """Create an IFC file with a beam using the object-oriented service"""
-    manager = IfcModelManagerFactory.create_manager(schema)
-
-    (manager
-     .create_file()
-     .initialize_model()
-     .add_beam(data))
-
-    return manager.save()

@@ -32,6 +32,8 @@ class IfcModelManager:
         self.context = None
         self.owner_history = None
 
+        self._building_element_entities = []
+
         # model = ifcopenshell.api.project.create_file()
 
     def create_file(self) -> 'IfcModelManager':
@@ -86,82 +88,20 @@ class IfcModelManager:
         origin = self.model.create_entity("IfcCartesianPoint", Coordinates=(point.x, point.y, point.z))
         return origin
 
-    def add_building_element(self, creator: IfcBuildingElementCreator) -> ifcopenshell.entity_instance:
+    def add_building_element(self, creator: IfcBuildingElementCreator) -> 'IfcModelManager':
         """Add a building element to the model using the provided creator"""
         if not self.model or not self.storey:
             raise ValueError("Model must be initialized before adding elements")
 
-        return creator.create_element(
+        instance = creator.create_element(
             self.model,
             self.context,
             self.owner_history,
             self.storey
         )
+        self._building_element_entities.append(instance)
 
-    def add_beam(self, data: IfcBeamCreateRequest) -> ifcopenshell.entity_instance:
-        """Add a beam to the model"""
-        origin = self._create_cartesian_point(CartesianPoint(0.0, 0.0, 0.0))
-        axis = self._create_direction(CartesianPoint(0.0, 0.0, 1.0))
-        ref_direction = self._create_direction(CartesianPoint(1.0, 0.0, 0.0))
-        axis2placement3d = self._create_axis_2placement_3d(origin, axis, ref_direction)
-
-        ref_dir_2d = self.model.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0))
-        axis2placement2d = self.model.create_entity(
-            "IfcAxis2Placement2D",
-            Location=origin,
-            RefDirection=ref_dir_2d
-        )
-
-        # Create profile and solid
-        profile = self.model.create_entity(
-            "IfcRectangleProfileDef",
-            ProfileType="AREA",
-            XDim=data.width,
-            YDim=data.height,
-            Position=axis2placement2d
-        )
-
-        direction_z = self._create_direction(CartesianPoint(0.0, 0.0, 1.0))
-        extruded = self.model.create_entity(
-            "IfcExtrudedAreaSolid",
-            SweptArea=profile,
-            Depth=data.length,
-            ExtrudedDirection=direction_z,
-            Position=axis2placement3d
-        )
-
-        body_rep = self.model.create_entity(
-            "IfcShapeRepresentation",
-            ContextOfItems=self.context,
-            RepresentationIdentifier="Body",
-            RepresentationType="SweptSolid",
-            Items=[extruded]
-        )
-
-        shape = self.model.create_entity("IfcProductDefinitionShape", Representations=[body_rep])
-
-        beam: ifcopenshell.entity_instance = self.model.create_entity(
-            "IfcBeam",
-            GlobalId=ifcopenshell.guid.new(),
-            OwnerHistory=self.owner_history,
-            Name=data.name,
-            ObjectPlacement=self.model.create_entity(
-                "IfcLocalPlacement",
-                PlacementRelTo=self.storey.ObjectPlacement,
-                RelativePlacement=axis2placement3d
-            ),
-            Representation=shape
-        )
-
-        self.model.create_entity(
-            "IfcRelContainedInSpatialStructure",
-            GlobalId=ifcopenshell.guid.new(),
-            OwnerHistory=self.owner_history,
-            RelatingStructure=self.storey,
-            RelatedElements=[beam]
-        )
-
-        return beam
+        return self
 
     def _create_axis_2placement_3d(self, origin: ifcopenshell.entity_instance, axis: ifcopenshell.entity_instance,
                                    ref_direction: ifcopenshell.entity_instance) -> ifcopenshell.entity_instance:

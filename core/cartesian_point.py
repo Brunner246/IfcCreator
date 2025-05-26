@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Iterator
 
 
 @dataclasses.dataclass(slots=True)
@@ -14,3 +15,9 @@ class CartesianPoint:
             raise TypeError(f"y must be a number, got {type(self.y).__name__}")
         if not isinstance(self.z, (int, float)):
             raise TypeError(f"z must be a number, got {type(self.z).__name__}")
+
+    def __iter__(self) -> Iterator[float]:
+        """Allow unpacking of CartesianPoint as (x, y, z)"""
+        yield self.x
+        yield self.y
+        yield self.z
